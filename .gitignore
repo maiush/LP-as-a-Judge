@@ -3,6 +3,7 @@
 *.pickle
 *.pkl
 
+cached/
 slurm/
 
 src/lpaaj/constants.py
