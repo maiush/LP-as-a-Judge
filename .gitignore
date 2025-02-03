@@ -1,0 +1,9 @@
+*.pyc
+*.pt
+*.pickle
+*.pkl
+
+slurm/
+
+src/lpaaj/constants.py
+
