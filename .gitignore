@@ -6,5 +6,5 @@
 cached/
 slurm/
 
-src/lpaaj/constants.py
+lpaaj/constants.py
 
