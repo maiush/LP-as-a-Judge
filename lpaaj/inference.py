@@ -1,11 +1,13 @@
 import os, argparse, pickle
 
-from lpaaj.data import TextDataset
+from lpaaj.data import TextDataset, MTBench
 from lpaaj.constants import MODELS, RESULTS_DIR
 
 import torch as t
 from transformers import AutoTokenizer
 from vllm import LLM, SamplingParams
+
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 
 def generate_vllm(
@@ -20,8 +22,11 @@ def generate_vllm(
     label_key = args.label_key
     reverse = args.reverse
     contrast_choice = args.contrast_choice
+    enable_prefix_caching = args.enable_prefix_caching
     # check for existing results
-    outpath = f"{RESULTS_DIR}/{dataset}/{model}/{prompt_key}_{task}"
+    outpath = f"{RESULTS_DIR}/{dataset}/{model}/"
+    if dataset == "mtbench": outpath += f"{task}"
+    else: outpath += f"{prompt_key}_{task}"
     if reverse: outpath += "_reversed"
     if contrast_choice: outpath += f"_{contrast_choice}.pt"
     else: outpath += ".pkl"
@@ -36,10 +41,14 @@ def generate_vllm(
     model = LLM(
         model=MODELS[model],
         dtype="bfloat16",
-        tensor_parallel_size=2,
+        tensor_parallel_size = 2 if model == "qwen-2.5-0.5b" else t.cuda.device_count(),
         max_num_seqs=max_num_seqs,
-        enable_prefix_caching=True,
+        max_model_len=4048,
+        enable_prefix_caching=enable_prefix_caching,
         trust_remote_code=True,
+        enforce_eager=True,
+        gpu_memory_utilization=0.98,
+        enable_chunked_prefill=True,
         download_dir=os.getenv("HF_HOME", None),
         seed=123456
     )
@@ -49,7 +58,7 @@ def generate_vllm(
         activations = {}
         def harvest(name):
             def hook(module, input, output):
-                activations[name] = output[0][-1].detach()
+                activations[name] = output[0][-1].detach().cpu()
             return hook
         for name, module in transformer.named_modules():
             name_parts = name.split(".")
@@ -62,12 +71,19 @@ def generate_vllm(
         logprobs=5
     )
     # load dataset
-    dataset = TextDataset(
-        task=task,
-        dataset=dataset,
-        prompt_key=prompt_key,
-        label_key=label_key,
-        reverse=reverse,
+    if dataset == "mtbench":
+        dataset = MTBench(
+            task=task,
+            reverse=reverse,
+            contrast_choice=contrast_choice
+        )
+    else:
+        dataset = TextDataset(
+            task=task,
+            dataset=dataset,
+            prompt_key=prompt_key,
+            label_key=label_key,
+            reverse=reverse,
         contrast_choice=contrast_choice
     )
     dataset.preprocess_prompts(tokenizer)
@@ -79,10 +95,12 @@ def generate_vllm(
         if task in ["score", "compare"]:
             valid_tks = ["1", "2"] if task == "score" else ["1", "2", "3", "4", "5"]
             prediction = -1
-            for _, logprob in output.outputs[0].logprobs[0].items():
-                if logprob.decoded_token.strip() in valid_tks:
-                    prediction = int(logprob.decoded_token.strip())
-                    break
+            logprobs = output.outputs[0].logprobs
+            if logprobs:
+                for _, logprob in logprobs[0].items():
+                    if logprob.decoded_token.strip() in valid_tks:
+                        prediction = int(logprob.decoded_token.strip())
+                        break
             predictions.append(prediction)
         # harvest activations
         if task == "contrast":
@@ -95,14 +113,16 @@ def generate_vllm(
     if predictions:
         with open(outpath, "wb") as f:
             pickle.dump(predictions, f)
+        print(f"saved predictions to {outpath}")
     if harvest:
         t.save(t.stack(harvest, dim=0), outpath)
+        print(f"saved activations to {outpath}")
             
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, default="qwen-2.5-0.5b")
-    parser.add_argument("--max_num_seqs", type=int, default=256)
+    parser.add_argument("--max_num_seqs", type=int, default=4)
     parser.add_argument("--max_new_tokens", type=int, default=1)
     parser.add_argument("--task", type=str, default="score")
     parser.add_argument("--dataset", type=str, default="newsroom")
@@ -110,6 +130,7 @@ if __name__ == "__main__":
     parser.add_argument("--label_key", type=str, default=None)
     parser.add_argument("--reverse", action="store_true", default=False)
     parser.add_argument("--contrast_choice", type=str, default=None)
+    parser.add_argument("--enable_prefix_caching", action="store_true", default=False)
     args = parser.parse_args()
 
     generate_vllm(args)
