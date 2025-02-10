@@ -216,9 +216,12 @@ Here are conversations between a user and two models.
 ----------
 
 Evaluate the quality of the responses provided by the two models. Which followed the user's instructions and answers the user's questions better? Answers must be a single choice."""
-        a, b = self.data["conversation_a"][i], self.data["conversation_b"][i]
-        if self.reverse: a, b = b, a
-        return [template.format(conversation_a=a, conversation_b=b).strip() for i in range(len(self.data))]
+        out = []
+        for i in range(len(self.data)):
+            a, b = self.data["conversation_a"][i], self.data["conversation_b"][i]
+            if self.reverse: a, b = b, a
+            out.append(template.format(conversation_a=a, conversation_b=b).strip())
+        return out
 
     def get_prompt(self, prompt: str) -> List[Dict[str, str]]:
         user_prompt = {
@@ -234,6 +237,109 @@ Evaluate the quality of the responses provided by the two models. Which followed
 
     def get_assistant_prompt(self) -> str:
         content = "Between Model 1 and Model 2, the better answer is from Model "
+        if self.task == "contrast":
+            content += self.contrast_choice
+        return content
+    
+    def preprocess_prompts(
+        self,
+        tokenizer
+    ) -> None:
+        self.tokenizer = tokenizer
+        apply_chat_template = self.tokenizer.apply_chat_template
+
+        self.processed_prompts = []
+        for prompt in tqdm(self.prompts, desc="preprocessing data"):
+            messages = self.get_prompt(prompt)
+            prompt = apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            prompt = self.check_priming(messages, prompt)
+            self.processed_prompts.append(prompt)
+        self.prompts = self.processed_prompts
+
+    def check_priming(
+            self,
+            messages: List[Dict[str, str]],
+            prompt: str
+    ) -> str:
+        '''
+        if we want to prime the model, we need to deal with special tokens
+        '''
+        # this only applies if we're priming the assistant
+        if messages[-1]['role'] != 'assistant': return prompt
+        message = messages[-1]['content']
+        # we need to handle the case where the last character is a space
+        space = message[-1] == ' '
+        if space: message = message[:-1]
+        # we need to chop off the chat template tags added by the tokenizer
+        ix = prompt.rindex(message) + len(message)
+        prompt = prompt[:ix]
+        # add the space back in necessary
+        if space: prompt = prompt + ' '
+        return prompt
+
+
+class LLMBar:
+    VALID_LLMBAR_SUBSETS = {
+        "Adversarial_GPTInst", "Adversarial_GPTOut", "Adversarial_Neighbor", "Adversarial_Manual", "Natural",
+        "Constraint", "Negation", "Normal", "Base_9", "Base_10"
+    }
+    
+    def __init__(self, subset: str, task: str, reverse: Optional[bool] = False, contrast_choice: Optional[str] = None) -> None:
+        if subset not in self.VALID_LLMBAR_SUBSETS:
+            raise ValueError(
+                f"Invalid subset: {subset}. Valid values are: {', '.join(sorted(self.VALID_LLMBAR_SUBSETS))}"
+            )
+        self.task = task
+        self.reverse = reverse
+        self.contrast_choice = contrast_choice
+        self.subset = subset
+        # load the appropriate subset
+        try:
+            self.data = load_dataset("princeton-nlp/LLMBar", "LLMBar", trust_remote_code=True)
+            self.data = self.data[subset].to_pandas()
+        except:
+            self.data = load_dataset("princeton-nlp/LLMBar", "CaseStudy", trust_remote_code=True)
+            self.data = self.data[subset].to_pandas()
+        self.prompts = self.get_prompts()
+        self.labels = self.get_labels()
+
+    def __getitem__(self, index: int) -> str:
+        return self.prompts[index]
+
+    def __len__(self) -> int:
+        return len(self.data)
+
+    def get_labels(self) -> list[str]:
+        return self.data['label'].tolist()
+    
+    def get_prompts(self) -> list[str]:
+        template = """\
+{input}
+Choice 1: {output_1}
+Choice 2: {output_2}
+
+Which choice is better? Answers must be a single choice."""
+        out = []
+        for i in range(len(self.data)):
+            a, b = self.data["output_1"][i], self.data["output_2"][i]
+            if self.reverse: a, b = b, a
+            out.append(template.format(input=self.data["input"][i], output_1=a, output_2=b).strip())
+        return out
+
+    def get_prompt(self, prompt: str) -> List[Dict[str, str]]:
+        user_prompt = {
+            'role': 'user',
+            'content': prompt
+        }
+        assistant_prompt = {
+            'role': 'assistant',
+            'content': self.get_assistant_prompt()
+        }
+        prompt = [user_prompt, assistant_prompt]
+        return prompt
+
+    def get_assistant_prompt(self) -> str:
+        content = "Between Choice 1 and Choice 2, the better answer is Choice "
         if self.task == "contrast":
             content += self.contrast_choice
         return content

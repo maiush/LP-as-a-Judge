@@ -1,6 +1,6 @@
 import os, argparse, pickle
 
-from lpaaj.data import TextDataset, MTBench
+from lpaaj.data import TextDataset, MTBench, LLMBar
 from lpaaj.constants import MODELS, RESULTS_DIR
 
 import torch as t
@@ -25,7 +25,8 @@ def generate_vllm(
     enable_prefix_caching = args.enable_prefix_caching
     # check for existing results
     outpath = f"{RESULTS_DIR}/{dataset}/{model}/"
-    if dataset == "mtbench": outpath += f"{task}"
+    if dataset.startswith("llmbar"): dataset, subset = dataset.split("-")
+    if dataset in ["mtbench", "llmbar"]: outpath += f"{task}"
     else: outpath += f"{prompt_key}_{task}"
     if reverse: outpath += "_reversed"
     if contrast_choice: outpath += f"_{contrast_choice}.pt"
@@ -73,6 +74,13 @@ def generate_vllm(
     # load dataset
     if dataset == "mtbench":
         dataset = MTBench(
+            task=task,
+            reverse=reverse,
+            contrast_choice=contrast_choice
+        )
+    elif dataset == "llmbar":
+        dataset = LLMBar(
+            subset=subset,
             task=task,
             reverse=reverse,
             contrast_choice=contrast_choice
