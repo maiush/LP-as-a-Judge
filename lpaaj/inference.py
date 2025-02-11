@@ -22,7 +22,6 @@ def generate_vllm(
     label_key = args.label_key
     reverse = args.reverse
     contrast_choice = args.contrast_choice
-    enable_prefix_caching = args.enable_prefix_caching
     # check for existing results
     outpath = f"{RESULTS_DIR}/{dataset}/{model}/"
     if dataset.startswith("llmbar"): dataset, subset = dataset.split("-")
@@ -44,8 +43,8 @@ def generate_vllm(
         dtype="bfloat16",
         tensor_parallel_size = 2 if model == "qwen-2.5-0.5b" else t.cuda.device_count(),
         max_num_seqs=max_num_seqs,
-        max_model_len=4048,
-        enable_prefix_caching=enable_prefix_caching,
+        max_model_len=4096,
+        enable_prefix_caching=True,
         trust_remote_code=True,
         enforce_eager=True,
         gpu_memory_utilization=0.98,
@@ -59,7 +58,17 @@ def generate_vllm(
         activations = {}
         def harvest(name):
             def hook(module, input, output):
-                activations[name] = output[0][-1].detach().cpu()
+                acts = activations.get(name, [])
+                current_acts = output[0].detach().cpu()
+                if current_acts.ndim == 3:
+                    current_acts = current_acts[:, -1, :]
+                    acts.extend([x for x in current_acts])
+                elif current_acts.ndim == 2:
+                    current_acts = current_acts[-1, :]
+                    acts.extend([current_acts])
+                else:
+                    raise ValueError(f"unexpected shape for activations: {current_acts.shape}")                
+                activations[name] = acts
             return hook
         for name, module in transformer.named_modules():
             name_parts = name.split(".")
@@ -110,13 +119,15 @@ def generate_vllm(
                         prediction = int(logprob.decoded_token.strip())
                         break
             predictions.append(prediction)
-        # harvest activations
-        if task == "contrast":
-            # NOTE: stacking all activations in case we decide we want them at a later date
-            # keep in mind the size of these can get quite large if we do so
-            current_acts = sorted(activations.items(), key = lambda x: int(x[0].split(".")[-1]))
-            current_acts = t.stack([activation for _, activation in current_acts], dim=0)[-1, :]
-            harvest.append(current_acts)
+    # harvest activations
+    if task == "contrast":
+        # NOTE: stacking all activations in case we decide we want them at a later date
+        # keep in mind the size of these can get quite large if we do so
+        all_acts = sorted(activations.items(), key = lambda x: int(x[0].split(".")[-1]))
+        all_acts = [t.stack(acts, dim=0) for _, acts in all_acts]
+        # getting the last layer (code supports all layers)
+        all_acts = all_acts[-1]
+        harvest.append(all_acts)
     # save results
     if predictions:
         with open(outpath, "wb") as f:
@@ -138,7 +149,6 @@ if __name__ == "__main__":
     parser.add_argument("--label_key", type=str, default=None)
     parser.add_argument("--reverse", action="store_true", default=False)
     parser.add_argument("--contrast_choice", type=str, default=None)
-    parser.add_argument("--enable_prefix_caching", action="store_true", default=False)
     args = parser.parse_args()
 
     generate_vllm(args)
