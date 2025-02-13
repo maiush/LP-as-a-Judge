@@ -43,37 +43,16 @@ def generate_vllm(
         dtype="bfloat16",
         tensor_parallel_size = 2 if model == "qwen-2.5-0.5b" else t.cuda.device_count(),
         max_num_seqs=max_num_seqs,
-        max_model_len=4096,
+        max_model_len=8192,
         enable_prefix_caching=True,
         trust_remote_code=True,
         enforce_eager=True,
         gpu_memory_utilization=0.98,
-        enable_chunked_prefill=True,
+        enable_chunked_prefill=(task != "contrast"),
         download_dir=os.getenv("HF_HOME", None),
-        seed=123456
+        seed=123456,
+        task="embed" if task == "contrast" else "generate"
     )
-    # add activation hooks
-    transformer = model.llm_engine.model_executor.driver_worker.model_runner.model
-    if task == "contrast":
-        activations = {}
-        def harvest(name):
-            def hook(module, input, output):
-                acts = activations.get(name, [])
-                current_acts = output[0].detach().cpu()
-                if current_acts.ndim == 3:
-                    current_acts = current_acts[:, -1, :]
-                    acts.extend([x for x in current_acts])
-                elif current_acts.ndim == 2:
-                    current_acts = current_acts[-1, :]
-                    acts.extend([current_acts])
-                else:
-                    raise ValueError(f"unexpected shape for activations: {current_acts.shape}")                
-                activations[name] = acts
-            return hook
-        for name, module in transformer.named_modules():
-            name_parts = name.split(".")
-            if len(name_parts) == 3 and name_parts[-1].isdigit():
-                module.register_forward_hook(harvest(name))
     # sampling parameters
     sampling_params = SamplingParams(
         max_tokens=max_new_tokens,
@@ -105,11 +84,14 @@ def generate_vllm(
     )
     dataset.preprocess_prompts(tokenizer)
     # generate
-    outputs = model.generate(list(dataset.prompts), sampling_params)
-    predictions, harvest = [], []
-    for output in outputs:
-        # grab logits
-        if task in ["score", "compare"]:
+    if task == "contrast":
+        outputs = model.encode(list(dataset.prompts))
+    else:
+        outputs = model.generate(list(dataset.prompts), sampling_params)
+    predictions = []
+    if task in ["score", "compare"]:
+        for output in outputs:
+            # grab logits
             valid_tks = ["1", "2"] if task == "score" else ["1", "2", "3", "4", "5"]
             prediction = -1
             logprobs = output.outputs[0].logprobs
@@ -121,13 +103,8 @@ def generate_vllm(
             predictions.append(prediction)
     # harvest activations
     if task == "contrast":
-        # NOTE: stacking all activations in case we decide we want them at a later date
-        # keep in mind the size of these can get quite large if we do so
-        all_acts = sorted(activations.items(), key = lambda x: int(x[0].split(".")[-1]))
-        all_acts = [t.stack(acts, dim=0) for _, acts in all_acts]
-        # getting the last layer (code supports all layers)
-        all_acts = all_acts[-1]
-        harvest.append(all_acts)
+        harvest = [x.outputs.data for x in outputs]
+        assert len(harvest) == len(dataset)
     # save results
     if predictions:
         with open(outpath, "wb") as f:
