@@ -1,8 +1,11 @@
-Metadata-Version: 2.2
+Metadata-Version: 2.1
 Name: lpaaj
 Version: 0.0.1
 Summary: linear probing for llm-as-a-judge tasks
+Home-page: UNKNOWN
 Author: sm2783
+License: UNKNOWN
+Platform: UNKNOWN
 Classifier: Programming Language :: Python :: 3.10
 Classifier: Programming Language :: Python :: 3.11
 Classifier: Environment :: GPU :: NVIDIA CUDA
@@ -10,18 +13,8 @@ Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
 Classifier: Topic :: System :: Distributed Computing
 Requires-Python: >=3.10
 Description-Content-Type: text/markdown
-Requires-Dist: matplotlib
-Requires-Dist: numpy
-Requires-Dist: pandas
-Requires-Dist: torch==2.5.1
-Requires-Dist: tqdm
-Dynamic: author
-Dynamic: classifier
-Dynamic: description
-Dynamic: description-content-type
-Dynamic: requires-dist
-Dynamic: requires-python
-Dynamic: summary
 
 # LP-as-a-Judge
 experiments on the use of linear classifier heads for llm-as-a-judge tasks.
+
+
