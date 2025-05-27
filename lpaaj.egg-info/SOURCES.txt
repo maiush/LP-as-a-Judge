@@ -7,6 +7,7 @@ lpaaj/inference.py
 lpaaj/layer_harvest.py
 lpaaj/layer_probes.py
 lpaaj/steering.py
+lpaaj/upload_model.py
 lpaaj.egg-info/PKG-INFO
 lpaaj.egg-info/SOURCES.txt
 lpaaj.egg-info/dependency_links.txt
