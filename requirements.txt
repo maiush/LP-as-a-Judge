@@ -1,5 +1,9 @@
+ipykernel
+ipywidgets
+liger-kernel
 matplotlib
 numpy
 pandas
+scikit-learn
 torch
 tqdm
