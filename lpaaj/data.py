@@ -4,7 +4,7 @@ from tqdm import tqdm
 from typing import Optional, Tuple, List, Dict
 
 from datasets import load_dataset
-from lpaaj.constants import DATA_DIR
+from lpaaj.constants import DATA_PATH
 
 
 class TextDataset():
@@ -48,7 +48,7 @@ class TextDataset():
         }
 
         # read data
-        path = f"{DATA_DIR}/{dataset}/{dataset}_prompts"
+        path = f"{DATA_PATH}/{dataset}/{dataset}_prompts"
         if task == "score":
             path = f"{path}_zero_shot.jsonl"
         elif task in ["compare", "contrast"]:
@@ -60,7 +60,7 @@ class TextDataset():
         self.data = pd.read_json(path, orient="records", lines=True)
         self.prompts = self.data[prompt_key].tolist()
         # read labels
-        path = f"{DATA_DIR}/{dataset}/{dataset}"
+        path = f"{DATA_PATH}/{dataset}/{dataset}"
         if task == "score" or dataset == "rocstories":
             path = f"{path}.jsonl"
         elif task in ["compare", "contrast"]:
@@ -93,12 +93,12 @@ class TextDataset():
             content = f"I would rate the {self.prompt_key} as a "
             return content
         elif self.dataset == "caters":
-            content = 'Between statement 1 and statement 2, the statement which appears before the other is statement '
+            content = 'Between statement 1 and statement 2, the statement which appears before the other is statement'
         elif self.dataset == "mctaco":
-            content = "Between choice 1 and choice 2, the more sensible option is choice "
+            content = "Between choice 1 and choice 2, the more sensible option is choice"
         else:
             aspect = self.aspects_noun2adj[self.prompt_key]
-            content = f"Between {item} 1 and {item} 2, the more {aspect} choice is {item} "
+            content = f"Between {item} 1 and {item} 2, the more {aspect} choice is {item}"
         if self.task == "contrast":
             content += self.contrast_choice
         return content
@@ -236,7 +236,7 @@ Evaluate the quality of the responses provided by the two models. Which followed
         return prompt
 
     def get_assistant_prompt(self) -> str:
-        content = "Between Model 1 and Model 2, the better answer is from Model "
+        content = "Between Model 1 and Model 2, the better answer is from Model"
         if self.task == "contrast":
             content += self.contrast_choice
         return content
@@ -339,7 +339,7 @@ Which choice is better? Answers must be a single choice."""
         return prompt
 
     def get_assistant_prompt(self) -> str:
-        content = "Between Choice 1 and Choice 2, the better answer is Choice "
+        content = "Between Choice 1 and Choice 2, the better answer is Choice"
         if self.task == "contrast":
             content += self.contrast_choice
         return content
