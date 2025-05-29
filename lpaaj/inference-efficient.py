@@ -6,7 +6,7 @@ from vllm import LLM, SamplingParams
 from vllm.lora.request import LoRARequest
 
 from lpaaj.data import TextDataset
-from lpaaj.constants import MODEL_PATH, RESULT_PATH
+from lpaaj.constants import MODEL_PATH, LORA_RESULTS_PATH, FULL_RESULTS_PATH
 
 
 
@@ -128,6 +128,7 @@ def inference(
     elif dataset in ["mctaco", "caters", "rocstories"]:
         lora_path = f"{MODEL_PATH}/{args.model}-lora-common_sense"
     # === CHECK FOR EXISTING RESULTS ===
+    RESULT_PATH = LORA_RESULTS_PATH if args.lora else FULL_RESULTS_PATH
     outpath = f"{RESULT_PATH}/{dataset}/{args.model}/{prompt_key}.pkl"
     if os.path.exists(outpath):
         print(f"results already exist at {outpath}")
