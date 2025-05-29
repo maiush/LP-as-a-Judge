@@ -5,6 +5,7 @@
 
 cached/
 slurm/
+graphs/
 
 lpaaj/constants.py
 
