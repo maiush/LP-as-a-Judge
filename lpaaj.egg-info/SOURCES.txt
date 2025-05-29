@@ -2,7 +2,9 @@ README.md
 pyproject.toml
 setup.py
 lpaaj/__init__.py
+lpaaj/all-inference.py
 lpaaj/data.py
+lpaaj/inference-efficient.py
 lpaaj/inference.py
 lpaaj/layer_harvest.py
 lpaaj/layer_probes.py
